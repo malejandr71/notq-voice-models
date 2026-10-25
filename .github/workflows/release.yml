@@ -1,0 +1,34 @@
+name: Build and publish voice packs
+on:
+  push:
+    branches: [main]
+    paths: [build.py, .github/workflows/release.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  TAG: kokoro-2026-10-25
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if this release already exists (released files never change)
+        id: check
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "exists=1" >> "$GITHUB_OUTPUT"; else echo "exists=0" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.exists == '0'
+        with: { python-version: '3.13' }
+      - name: Build packs
+        if: steps.check.outputs.exists == '0'
+        run: |
+          pip install onnx==1.23.2 onnxruntime==1.31.0 numpy==2.5.4
+          python build.py work
+      - name: Publish release
+        if: steps.check.outputs.exists == '0'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release create "$TAG" dist/* --title "Kokoro voice packs ($TAG)" \
+            --notes "English (Kokoro v1.0 int8, 7 voices) and German (Kokoro-82M German, df_kerstin, int8) for sherpa-onnx 1.13.8. See README and manifest.json."
