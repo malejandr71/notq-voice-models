@@ -1,0 +1,39 @@
+name: Publish lesson-tutor models v3
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/tutor-v3-release.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  TAG: tutor-v3-2026-10-29
+  SRC: https://www.kaggle.com/api/v1/datasets/download/mahmoudmagdyokaab/notq-tutor-v3-gguf
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip if this release already exists (released files never change)
+        id: check
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "exists=1" >> "$GITHUB_OUTPUT"; else echo "exists=0" >> "$GITHUB_OUTPUT"; fi
+      - name: Download from the public Kaggle dataset and verify checksums
+        if: steps.check.outputs.exists == '0'
+        run: |
+          mkdir dist && cd dist
+          for f in notq-tutor-v3-lfm25-350m-Q4_0.gguf notq-tutor-v3-lfm25-1.2b-Q4_0.gguf; do
+            curl -fsSL --retry 5 -o "$f" "$SRC/$f"
+          done
+          cat > SHA256SUMS <<'SUMS'
+          59f127b77f59a3a349215b61b0773d1d1f66d05eb8f82e5aac80008943f54cf8  notq-tutor-v3-lfm25-350m-Q4_0.gguf
+          7701fad1b9546a48fb2f5eafc9cab2f079e7c308bc852a28399ca172413f4f02  notq-tutor-v3-lfm25-1.2b-Q4_0.gguf
+          SUMS
+          sed -i 's/^ *//' SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Publish release
+        if: steps.check.outputs.exists == '0'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --title "Lesson-tutor models v3 ($TAG)" \
+            --notes "Notq lesson tutor v3 (live-call format: ok/fix/say, verdict first): LiquidAI LFM2.5-350M (full fine-tune) and LFM2.5-1.2B-Instruct (LoRA, merged) trained on synthetic tutor conversations (teacher Qwen3-8B, Apache-2.0), quantised to Q4_0 with llama.cpp. Licence: LFM Open License v1.0 (Liquid AI)."
